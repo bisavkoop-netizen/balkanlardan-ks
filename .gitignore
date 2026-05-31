@@ -1,0 +1,14 @@
+.env
+auth.db
+__pycache__/
+*.pyc
+*.pyo
+Arşiv/
+assets/fonts/
+*.mp4
+*.mov
+*.m4v
+.DS_Store
+venv/
+piper_modeller/
+piper_modeller/

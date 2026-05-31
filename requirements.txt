@@ -1,0 +1,51 @@
+# ============================================================
+# Web Paneli (Streamlit)
+# ============================================================
+streamlit>=1.32.0
+python-dotenv>=1.0.0
+
+# ============================================================
+# AI
+# ============================================================
+anthropic>=0.39.0
+
+# ============================================================
+# Haber Çekme + HTML Parsing
+# ============================================================
+gnews>=0.3.7
+googlenewsdecoder>=0.1.7
+newspaper3k>=0.2.8
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+lxml>=4.9.0
+lxml_html_clean
+
+# ============================================================
+# Medya Üretimi
+# ============================================================
+edge-tts>=6.1.10
+moviepy==1.0.3
+Pillow>=10.0.0
+# edge-tts'i Streamlit'in event loop'unda çalıştırmak için
+nest-asyncio>=1.5.0
+
+# ============================================================
+# Sosyal Medya API'leri (v3 — Global hesap modeli)
+# ============================================================
+# X (Twitter): tweepy hem v1.1 medya hem v2 tweet'i tek paketten çözer
+tweepy>=4.14.0
+
+# YouTube Shorts: Google Data API v3 + OAuth2
+google-api-python-client>=2.100.0
+google-auth>=2.23.0
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.1.1
+
+# Instagram, TikTok, Facebook için ayrı SDK kullanmıyoruz —
+# Graph API ve TikTok Content Posting API'sini doğrudan
+# 'requests' ile çağırıyoruz (sosyal_motoru.py içinde).
+
+# ============================================================
+# Kimlik Doğrulama (auth_motoru.py)
+# ============================================================
+bcrypt>=4.0.0
