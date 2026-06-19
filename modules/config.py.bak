@@ -29,28 +29,12 @@ def _zorunlu_env(anahtar: str) -> str:
 # ============================================================
 # .ENV'DEN GELEN SIRLAR
 # ============================================================
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
+ANTHROPIC_API_KEY = _zorunlu_env("ANTHROPIC_API_KEY")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5")  # Sonnet — küratör tonu daha iyi
 
-# ============================================================
-# AI SAĞLAYICI SEÇİMİ
-# ============================================================
-# .env'de AI_PROVIDER=gemini veya AI_PROVIDER=claude
-# Gemini kullanılırsa ANTHROPIC_API_KEY zorunlu değil.
-# claude kullanılırsa ANTHROPIC_API_KEY zorunludur.
-AI_PROVIDER = os.getenv("AI_PROVIDER", "claude").strip().lower()  # "claude" | "gemini"
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")     # Ücretsiz tier destekli
-
-# Claude seçildiyse API key zorunlu
-if AI_PROVIDER == "claude" and not ANTHROPIC_API_KEY:
-    raise RuntimeError("❌ .env dosyasında 'ANTHROPIC_API_KEY' tanımlı değil. AI_PROVIDER=gemini yaparak Gemini'ye geçebilirsiniz.")
-if AI_PROVIDER == "gemini" and not GEMINI_API_KEY:
-    raise RuntimeError("❌ .env dosyasında 'GEMINI_API_KEY' tanımlı değil. https://aistudio.google.com/apikey adresinden ücretsiz alabilirsiniz.")
-
-WP_URL = os.getenv("WP_URL", "").strip()
-WP_USER = os.getenv("WP_USER", "").strip()
-WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD", "").strip()
+WP_URL = _zorunlu_env("WP_URL")
+WP_USER = _zorunlu_env("WP_USER")
+WP_APP_PASSWORD = _zorunlu_env("WP_APP_PASSWORD")
 
 APP_USERNAME = os.getenv("APP_USERNAME", "")
 APP_PASSWORD = os.getenv("APP_PASSWORD", "")

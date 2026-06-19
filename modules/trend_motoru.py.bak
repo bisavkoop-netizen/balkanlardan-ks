@@ -33,66 +33,24 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, List, Any, Optional
 
+from anthropic import Anthropic
+
 from . import config
 from . import storage
 from . import kaynaklar
 
 
 # ============================================================
-# AI İSTEMCİSİ — Claude veya Gemini (config.AI_PROVIDER)
+# ANTHROPIC İSTEMCİSİ
 # ============================================================
-_claude_client_cache = None
-_gemini_client_cache = None
+_client: Optional[Anthropic] = None
 
 
-def _claude_client():
-    global _claude_client_cache
-    if _claude_client_cache is None:
-        from anthropic import Anthropic
-        _claude_client_cache = Anthropic(api_key=config.ANTHROPIC_API_KEY)
-    return _claude_client_cache
-
-
-def _gemini_client():
-    global _gemini_client_cache
-    if _gemini_client_cache is None:
-        from google import genai
-        from google.genai import types
-        _gemini_client_cache = genai.Client(api_key=config.GEMINI_API_KEY)
-    return _gemini_client_cache
-
-
-def _ai_uret(sistem_promptu: str, kullanici_mesaji: str) -> str:
-    """
-    Aktif sağlayıcıya (Claude veya Gemini) göre metin üretir.
-    Her iki sağlayıcıdan ham metin (JSON string) döner.
-    """
-    if config.AI_PROVIDER == "gemini":
-        from google import genai
-        from google.genai import types
-        client = _gemini_client()
-        yanit = client.models.generate_content(
-            model=config.GEMINI_MODEL,
-            contents=kullanici_mesaji,
-            config=types.GenerateContentConfig(
-                system_instruction=sistem_promptu,
-                temperature=0.85,
-                top_p=0.95,
-                max_output_tokens=65536,
-                response_mime_type="application/json",
-            ),
-        )
-        return yanit.text.strip()
-    else:
-        # Varsayılan: Claude
-        from anthropic import Anthropic
-        cevap = _claude_client().messages.create(
-            model=config.CLAUDE_MODEL,
-            max_tokens=8000,
-            system=sistem_promptu,
-            messages=[{"role": "user", "content": kullanici_mesaji}],
-        )
-        return cevap.content[0].text.strip()
+def _claude_client() -> Anthropic:
+    global _client
+    if _client is None:
+        _client = Anthropic(api_key=config.ANTHROPIC_API_KEY)
+    return _client
 
 
 # ============================================================
@@ -245,90 +203,6 @@ OUTPUT — strict flat JSON, no markdown fences. Exactly these fields:
 Return only the JSON object."""
 
 
-def _gemini_dil_dil_uret(
-    tohum_konusu: str,
-    tema: str,
-    ulke_bilgi: Dict[str, Any],
-    diller: List[str],
-    formatlar: List[str],
-    ek_baglam: str = "",
-) -> Dict[str, Any]:
-    """
-    Gemini için: her dili ayrı ayrı üretir, sonuçları birleştirir.
-    Böylece büyük JSON kesilme sorunu ortadan kalkar.
-    """
-    from google import genai
-    from google.genai import types
-    import time
-
-    client = _gemini_client()
-    birlesik_icerik: Dict[str, Any] = {}
-
-    for dil_kodu in diller:
-        dil_adi = config.DIL_AYARLARI[dil_kodu]["ad"]
-        print(f"      🌐 {dil_kodu} ({dil_adi}) üretiliyor...")
-
-        # Tek dil için şema
-        schema: Dict[str, str] = {}
-        d = dil_kodu
-        schema[f"{d}_hook"] = f"({dil_adi}) Scroll-stopping first line, MAX 15 words."
-        schema[f"{d}_baslik"] = f"({dil_adi}) SEO-friendly article title, 8-12 words."
-        schema[f"{d}_ozet"] = f"({dil_adi}) 3-4 sentence social caption body."
-        schema[f"{d}_uzun_metin"] = f"({dil_adi}) 4-5 paragraph blog article, curator voice."
-        if "carousel" in formatlar:
-            schema[f"{d}_carousel_slaytlar"] = f"({dil_adi}) Exactly 5 strings list, each MAX 12 words."
-        schema[f"{d}_cta_soru"] = f"({dil_adi}) Closing comment-bait question, 1 sentence."
-        schema[f"{d}_hashtags"] = f"({dil_adi}) 5-8 hashtags."
-
-        mesaj = f"""TOPIC SEED: "{tohum_konusu}"
-THEME: {tema}
-PRIMARY COUNTRY: {ulke_bilgi.get('ad_en', '')}
-ADDITIONAL CONTEXT: {ek_baglam or 'None'}
-LANGUAGE: {dil_adi} ({dil_kodu}) ONLY
-
-Produce content in {dil_adi} only. Return strict flat JSON with these fields:
-{json.dumps(schema, indent=2, ensure_ascii=False)}
-
-Return only the JSON object, no markdown."""
-
-        try:
-            yanit = client.models.generate_content(
-                model=config.GEMINI_MODEL,
-                contents=mesaj,
-                config=types.GenerateContentConfig(
-                    system_instruction=SISTEM_PROMPTU,
-                    temperature=0.85,
-                    top_p=0.95,
-                    max_output_tokens=8192,
-                    response_mime_type="application/json",
-                ),
-            )
-            metin = yanit.text.strip()
-            if metin.startswith("```"):
-                metin = metin.split("```", 2)[1]
-                if metin.startswith("json"):
-                    metin = metin[4:]
-                metin = metin.strip()
-            dil_verisi = json.loads(metin)
-            birlesik_icerik.update(dil_verisi)
-        except Exception as e:
-            print(f"      ⚠️  {dil_kodu} hatası: {e}")
-            # Bu dil için fallback
-            birlesik_icerik[f"{d}_hook"] = tohum_konusu
-            birlesik_icerik[f"{d}_baslik"] = tohum_konusu
-            birlesik_icerik[f"{d}_ozet"] = "İçerik üretilemedi."
-            birlesik_icerik[f"{d}_uzun_metin"] = ""
-            if "carousel" in formatlar:
-                birlesik_icerik[f"{d}_carousel_slaytlar"] = [tohum_konusu, "", "", "", "Save this post 📌"]
-            birlesik_icerik[f"{d}_cta_soru"] = ""
-            birlesik_icerik[f"{d}_hashtags"] = "#Balkanlardan #BalkanCulture"
-
-        # Rate limit koruması — dakikada 15 istek sınırı
-        time.sleep(4)
-
-    return birlesik_icerik
-
-
 def icerik_uret_tohumdan(
     tohum_konusu: str,
     ulke_kodu: str,
@@ -360,44 +234,42 @@ def icerik_uret_tohumdan(
         raise ValueError(f"Bilinmeyen ülke kodu: {ulke_kodu}")
 
     diller = _dil_seti_belirle(ulke_kodu, ekstra_diller)
+    kullanici_mesaji = _icerik_uret_promptu(
+        tohum_konusu=tohum_konusu,
+        tema=tema,
+        ulke_bilgi=ulke_bilgi,
+        diller=diller,
+        formatlar=formatlar,
+        ek_baglam=ek_baglam,
+    )
 
-    if config.AI_PROVIDER == "gemini":
-        # Gemini: her dil icin ayri istek — buyuk JSON kesilme sorununu onler
-        icerik = _gemini_dil_dil_uret(
-            tohum_konusu=tohum_konusu,
-            tema=tema,
-            ulke_bilgi=ulke_bilgi,
-            diller=diller,
-            formatlar=formatlar,
-            ek_baglam=ek_baglam,
+    try:
+        cevap = _claude_client().messages.create(
+            model=config.CLAUDE_MODEL,
+            max_tokens=8000,  # carousel + uzun metin + 6+ dil = bol token
+            system=SISTEM_PROMPTU,
+            messages=[{"role": "user", "content": kullanici_mesaji}],
         )
-    else:
-        # Claude: tek istekte tum diller (verimli)
-        kullanici_mesaji = _icerik_uret_promptu(
-            tohum_konusu=tohum_konusu,
-            tema=tema,
-            ulke_bilgi=ulke_bilgi,
-            diller=diller,
-            formatlar=formatlar,
-            ek_baglam=ek_baglam,
-        )
-        try:
-            metin = _ai_uret(SISTEM_PROMPTU, kullanici_mesaji)
-            if metin.startswith("```"):
-                metin = metin.split("```", 2)[1]
-                if metin.startswith("json"):
-                    metin = metin[4:]
-                metin = metin.strip()
-            icerik = json.loads(metin)
-        except json.JSONDecodeError as e:
-            print(f"   \u26a0\ufe0f  JSON parse hatasi: {e}")
-            print(f"      Ham yanıtın ilk 500 char: {metin[:500]}")
-            icerik = _fallback_icerik(tohum_konusu, diller, formatlar)
-        except Exception as e:
-            print(f"   \u26a0\ufe0f  Claude hatasi: {e}")
-            if config.DEBUG:
-                traceback.print_exc()
-            icerik = _fallback_icerik(tohum_konusu, diller, formatlar)
+        metin = cevap.content[0].text.strip()
+
+        # ```json fence temizliği
+        if metin.startswith("```"):
+            metin = metin.split("```", 2)[1]
+            if metin.startswith("json"):
+                metin = metin[4:]
+            metin = metin.strip()
+
+        icerik = json.loads(metin)
+
+    except json.JSONDecodeError as e:
+        print(f"   ⚠️  JSON parse hatası: {e}")
+        print(f"      Ham yanıtın ilk 500 char: {metin[:500]}")
+        icerik = _fallback_icerik(tohum_konusu, diller, formatlar)
+    except Exception as e:
+        print(f"   ⚠️  Claude hatası: {e}")
+        if config.DEBUG:
+            traceback.print_exc()
+        icerik = _fallback_icerik(tohum_konusu, diller, formatlar)
 
     return {
         "diller": diller,
@@ -586,22 +458,12 @@ def _icerikten_diller_sozlugu(
 # BAĞLANTI TESTİ
 # ============================================================
 def claude_baglanti_testi() -> tuple[bool, str]:
-    """Aktif AI sağlayıcısını test eder (Claude veya Gemini)."""
     try:
-        if config.AI_PROVIDER == "gemini":
-            client = _gemini_client()
-            client.models.generate_content(
-                model=config.GEMINI_MODEL,
-                contents="Reply with the single word: pong",
-            )
-            return True, f"✅ Gemini bağlantısı OK — model: {config.GEMINI_MODEL}"
-            return True, f"✅ Gemini bağlantısı OK — model: {config.GEMINI_MODEL}"
-        else:
-            cevap = _claude_client().messages.create(
-                model=config.CLAUDE_MODEL,
-                max_tokens=10,
-                messages=[{"role": "user", "content": "ping"}],
-            )
-            return True, f"✅ Claude bağlantısı OK — model: {cevap.model}"
+        cevap = _claude_client().messages.create(
+            model=config.CLAUDE_MODEL,
+            max_tokens=10,
+            messages=[{"role": "user", "content": "ping"}],
+        )
+        return True, f"✅ Bağlantı OK — model: {cevap.model}"
     except Exception as e:
         return False, f"❌ Hata: {e}"
